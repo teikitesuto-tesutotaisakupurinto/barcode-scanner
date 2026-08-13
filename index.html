@@ -1,87 +1,42 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>バーコードスキャナー</title>
 
-<title>バーコードスキャナー</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
-<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
 
-<style>
+    h1 {
+      font-size: 24px;
+    }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  background: #000;
-  color: #fff;
-  font-family: sans-serif;
-  text-align: center;
-}
+    #status {
+      font-size: 20px;
+      margin: 20px 0;
+      word-break: break-all;
+    }
 
-h1 {
-  font-size: 22px;
-  margin: 15px 0;
-}
+    #reader {
+      width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
+    }
 
-#status {
-  font-size: 18px;
-  min-height: 28px;
-  margin: 10px;
-  word-break: break-all;
-}
-
-#cameraArea {
-  position: relative;
-  width: 100%;
-  max-width: 600px;
-  margin: auto;
-  overflow: hidden;
-}
-
-#video {
-  display: block;
-  width: 100%;
-  height: auto;
-  background: #111;
-}
-
-#scanBox {
-  position: absolute;
-
-  width: 82%;
-  height: 130px;
-
-  left: 50%;
-  top: 50%;
-
-  transform: translate(-50%, -50%);
-
-  border: 3px solid white;
-
-  box-sizing: border-box;
-
-  pointer-events: none;
-
-  /*
-   * 点滅・アニメーションは一切なし
-   */
-}
-
-#startButton {
-  font-size: 20px;
-  padding: 12px 25px;
-  margin: 15px;
-}
-
-#result {
-  font-size: 22px;
-  margin: 15px;
-  word-break: break-all;
-}
-
-</style>
+    button {
+      font-size: 22px;
+      padding: 15px 30px;
+      margin: 10px;
+    }
+  </style>
 </head>
 
 <body>
@@ -89,50 +44,24 @@ h1 {
 <h1>バーコードスキャナー</h1>
 
 <div id="status">
-カメラ開始を押してください
+  カメラ開始を押してください
 </div>
 
 <button id="startButton">
-カメラ開始
+  カメラ開始
 </button>
 
-<div id="cameraArea">
-
-  <video
-    id="video"
-    autoplay
-    muted
-    playsinline>
-  </video>
-
-  <div id="scanBox"></div>
-
-</div>
-
-<div id="result"></div>
-
+<div id="reader"></div>
 
 <script>
 
-/*
- * Google Apps ScriptのWebアプリURL
- *
- * ここを自分のURLに変更してください。
- */
 const RELAY_URL =
   "https://script.google.com/macros/s/AKfycbxum4qXhHTsy9jQ9PToEagsBpvR6s7FrO5ODDVoIRiWTZ1UuQptw7lMH2gvZAhqR0bB9A/exec";
 
 
-/*
- * ZXing
- */
-let codeReader = null;
+let scanner = null;
 
-
-/*
- * カメラ起動状態
- */
-let cameraRunning = false;
+let scanning = false;
 
 
 /*
@@ -142,7 +71,7 @@ let audioContext = null;
 
 
 /*
- * 最後に読み取ったコード
+ * 最後に読み取ったバーコード
  */
 let lastCode = "";
 
@@ -154,50 +83,31 @@ let lastScanTime = 0;
 
 
 /*
- * 同じバーコードを2秒以内に
- * 再読み取りしない
+ * 同じバーコードは2秒間読み取らない
  */
 const SAME_CODE_INTERVAL = 2000;
 
 
 /*
- * DOM
- */
-const video =
-  document.getElementById("video");
-
-const status =
-  document.getElementById("status");
-
-const result =
-  document.getElementById("result");
-
-const startButton =
-  document.getElementById("startButton");
-
-
-/*
  * カメラ開始
  */
-startButton.addEventListener(
-  "click",
-  startCamera
-);
+document
+  .getElementById("startButton")
+  .addEventListener(
+    "click",
+    startCamera
+  );
 
 
 async function startCamera() {
 
-  if (cameraRunning) {
+  if (scanning) {
     return;
   }
 
 
-  status.textContent =
-    "カメラを起動しています...";
-
-
   /*
-   * 音声をユーザー操作の中で初期化
+   * 音声を有効にする
    */
   try {
 
@@ -205,12 +115,10 @@ async function startCamera() {
       window.AudioContext ||
       window.webkitAudioContext;
 
-
     if (AudioContext) {
 
       audioContext =
         new AudioContext();
-
 
       if (
         audioContext.state ===
@@ -226,7 +134,7 @@ async function startCamera() {
   } catch (error) {
 
     console.log(
-      "音声初期化エラー",
+      "音声初期化エラー:",
       error
     );
 
@@ -234,262 +142,81 @@ async function startCamera() {
 
 
   /*
-   * カメラの存在を確認
+   * カメラを起動
    */
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
-  ) {
-
-    status.textContent =
-      "このブラウザではカメラを利用できません";
-
-    return;
-  }
+  document.getElementById(
+    "status"
+  ).textContent =
+    "カメラを起動しています...";
 
 
-  /*
-   * ZXingを確認
-   */
-  if (
-    typeof ZXing ===
-    "undefined"
-  ) {
-
-    status.textContent =
-      "バーコードライブラリを読み込めません";
-
-    return;
-  }
+  scanner =
+    new Html5Qrcode("reader");
 
 
   try {
 
-    /*
-     * まずカメラへのアクセスを直接確認
-     */
-    const testStream =
-      await navigator.mediaDevices.getUserMedia({
+    await scanner.start(
 
-        video: {
-          facingMode: {
-            ideal: "environment"
-          }
+      {
+        facingMode: {
+          ideal: "environment"
+        }
+      },
+
+      {
+        fps: 10,
+
+        qrbox: {
+          width: 280,
+          height: 160
         },
 
-        audio: false
+        aspectRatio: 1.777778
+      },
 
-      });
+      onScanSuccess,
 
+      function () {
+        /*
+         * 読み取り失敗は無視
+         */
+      }
 
-    /*
-     * テスト用ストリームを停止
-     */
-    testStream
-      .getTracks()
-      .forEach(
-        track => track.stop()
-      );
-
-
-    /*
-     * ZXingを起動
-     */
-    codeReader =
-      new ZXing.BrowserMultiFormatReader();
+    );
 
 
-    cameraRunning = true;
+    scanning = true;
 
 
-    startButton.disabled =
-      true;
+    document.getElementById(
+      "status"
+    ).textContent =
+      "バーコードをカメラに映してください";
 
 
-    startButton.textContent =
+    document.getElementById(
+      "startButton"
+    ).textContent =
       "カメラ起動中";
 
 
-    status.textContent =
-      "バーコードを白い枠に入れてください";
-
-
-    /*
-     * 背面カメラを指定
-     */
-    const constraints = {
-
-      video: {
-
-        facingMode: {
-          ideal: "environment"
-        },
-
-        width: {
-          ideal: 1280
-        },
-
-        height: {
-          ideal: 720
-        }
-
-      }
-
-    };
-
-
-    /*
-     * バーコード読み取り開始
-     */
-    codeReader.decodeFromConstraints(
-
-      constraints,
-
-      video,
-
-      function(result, error) {
-
-        if (result) {
-
-          handleBarcode(
-            result.getText()
-          );
-
-        }
-
-      }
-
-    );
+    document.getElementById(
+      "startButton"
+    ).disabled = true;
 
 
   } catch (error) {
 
-    cameraRunning = false;
-
-
-    startButton.disabled =
-      false;
-
-
-    startButton.textContent =
-      "カメラ開始";
-
-
-    status.textContent =
+    document.getElementById(
+      "status"
+    ).textContent =
       "カメラ起動エラー: " +
-      error.name +
-      " / " +
-      error.message;
+      error;
 
 
     console.error(
-      error
-    );
-
-  }
-
-}
-
-
-/*
- * バーコード処理
- */
-async function handleBarcode(
-  code
-) {
-
-  const now =
-    Date.now();
-
-
-  /*
-   * 同じコードなら
-   * 2秒以内は無視
-   */
-  if (
-
-    code === lastCode &&
-
-    now - lastScanTime <
-      SAME_CODE_INTERVAL
-
-  ) {
-
-    return;
-
-  }
-
-
-  /*
-   * 記録
-   */
-  lastCode =
-    code;
-
-  lastScanTime =
-    now;
-
-
-  /*
-   * ピッ
-   */
-  beep();
-
-
-  /*
-   * 画面表示
-   */
-  result.textContent =
-    code;
-
-  status.textContent =
-    "読み取り: " +
-    code;
-
-
-  /*
-   * Google Apps Scriptへ送信
-   */
-  try {
-
-    await fetch(
-
-      RELAY_URL,
-
-      {
-
-        method: "POST",
-
-        mode: "no-cors",
-
-        headers: {
-
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-
-        },
-
-        body:
-          "value=" +
-          encodeURIComponent(code)
-
-      }
-
-    );
-
-
-    status.textContent =
-      "送信しました: " +
-      code;
-
-
-  } catch (error) {
-
-    status.textContent =
-      "送信エラー: " +
-      error.message;
-
-    console.error(
+      "カメラエラー:",
       error
     );
 
@@ -544,15 +271,11 @@ function beep() {
 
     gain.gain.exponentialRampToValueAtTime(
       0.001,
-
-      audioContext.currentTime +
-      0.12
+      audioContext.currentTime + 0.12
     );
 
 
-    oscillator.connect(
-      gain
-    );
+    oscillator.connect(gain);
 
 
     gain.connect(
@@ -564,17 +287,129 @@ function beep() {
 
 
     oscillator.stop(
-
-      audioContext.currentTime +
-      0.12
-
+      audioContext.currentTime + 0.12
     );
 
 
   } catch (error) {
 
     console.log(
-      "ビープ音エラー",
+      "音声エラー:",
+      error
+    );
+
+  }
+
+}
+
+
+/*
+ * バーコード読み取り成功
+ */
+async function onScanSuccess(
+  decodedText
+) {
+
+  const now =
+    Date.now();
+
+
+  /*
+   * 同じバーコードなら
+   * 2秒以内は完全に無視
+   */
+  if (
+
+    decodedText === lastCode &&
+
+    now - lastScanTime <
+      SAME_CODE_INTERVAL
+
+  ) {
+
+    return;
+
+  }
+
+
+  /*
+   * 今回のバーコードを記録
+   */
+  lastCode =
+    decodedText;
+
+
+  lastScanTime =
+    now;
+
+
+  /*
+   * ピッ
+   */
+  beep();
+
+
+  /*
+   * 読み取った値を表示
+   */
+  document.getElementById(
+    "status"
+  ).textContent =
+    "読み取り: " +
+    decodedText;
+
+
+  /*
+   * Google Apps Scriptへ送信
+   */
+  try {
+
+    await fetch(
+
+      RELAY_URL,
+
+      {
+
+        method: "POST",
+
+        mode: "no-cors",
+
+        headers: {
+
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+
+        },
+
+        body:
+          "value=" +
+          encodeURIComponent(
+            decodedText
+          )
+
+      }
+
+    );
+
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "送信しました: " +
+      decodedText;
+
+
+  } catch (error) {
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "送信エラー: " +
+      error;
+
+
+    console.error(
+      "送信エラー:",
       error
     );
 
