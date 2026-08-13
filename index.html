@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>バーコードスキャナー</title>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -29,6 +30,24 @@
       width: 100%;
       max-width: 500px;
       margin: 20px auto;
+      position: relative;
+    }
+
+    /*
+     * 固定スキャン枠
+     * 点滅しません
+     */
+    .scan-box {
+      position: absolute;
+      width: 280px;
+      height: 160px;
+      border: 3px solid white;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      box-sizing: border-box;
+      pointer-events: none;
+      z-index: 10;
     }
 
     button {
@@ -51,7 +70,9 @@
   カメラ開始
 </button>
 
-<div id="reader"></div>
+<div id="reader">
+  <div class="scan-box"></div>
+</div>
 
 <script>
 
@@ -107,7 +128,7 @@ async function startCamera() {
 
 
   /*
-   * 音声を有効にする
+   * 音声を有効化
    */
   try {
 
@@ -121,8 +142,7 @@ async function startCamera() {
         new AudioContext();
 
       if (
-        audioContext.state ===
-        "suspended"
+        audioContext.state === "suspended"
       ) {
 
         await audioContext.resume();
@@ -141,9 +161,6 @@ async function startCamera() {
   }
 
 
-  /*
-   * カメラを起動
-   */
   document.getElementById(
     "status"
   ).textContent =
@@ -165,14 +182,13 @@ async function startCamera() {
       },
 
       {
+        /*
+         * 点滅する標準qrboxは使わない
+         */
         fps: 10,
 
-        qrbox: {
-          width: 280,
-          height: 160
-        },
-
         aspectRatio: 1.777778
+
       },
 
       onScanSuccess,
@@ -192,7 +208,7 @@ async function startCamera() {
     document.getElementById(
       "status"
     ).textContent =
-      "バーコードをカメラに映してください";
+      "バーコードを枠の中に入れてください";
 
 
     document.getElementById(
@@ -238,8 +254,7 @@ function beep() {
   try {
 
     if (
-      audioContext.state ===
-      "suspended"
+      audioContext.state === "suspended"
     ) {
 
       audioContext.resume();
@@ -316,7 +331,7 @@ async function onScanSuccess(
 
   /*
    * 同じバーコードなら
-   * 2秒以内は完全に無視
+   * 2秒以内は無視
    */
   if (
 
