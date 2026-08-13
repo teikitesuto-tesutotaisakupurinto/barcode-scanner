@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>バーコードスキャナー</title>
+
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
     body {
       font-family: sans-serif;
@@ -36,24 +39,81 @@
 
 <h1>バーコードスキャナー</h1>
 
-<div id="status">「カメラ開始」を押してください</div>
+<div id="status">
+  「カメラ開始」を押してください
+</div>
 
-<button id="startButton">カメラ開始</button>
+<button id="startButton">
+  カメラ開始
+</button>
 
 <div id="reader"></div>
 
 <script>
+
 const RELAY_URL =
   "ここにGoogle Apps ScriptのウェブアプリURLを入れる";
 
 let scanner = null;
 let scanning = false;
-let lastCode = "";
+
+/*
+ * 最後に読み取った時刻
+ */
 let lastScanTime = 0;
 
+/*
+ * 1秒間は次の読み取りを受け付けない
+ */
+const SCAN_INTERVAL = 1000;
+
+
+/*
+ * ピッ音
+ */
+function beep() {
+
+  const AudioContext =
+    window.AudioContext ||
+    window.webkitAudioContext;
+
+  const audioContext =
+    new AudioContext();
+
+  const oscillator =
+    audioContext.createOscillator();
+
+  const gain =
+    audioContext.createGain();
+
+  oscillator.frequency.value = 1000;
+
+  gain.gain.value = 0.15;
+
+  oscillator.connect(gain);
+
+  gain.connect(
+    audioContext.destination
+  );
+
+  oscillator.start();
+
+  oscillator.stop(
+    audioContext.currentTime + 0.08
+  );
+}
+
+
+/*
+ * カメラ開始
+ */
 document
   .getElementById("startButton")
-  .addEventListener("click", startCamera);
+  .addEventListener(
+    "click",
+    startCamera
+  );
+
 
 async function startCamera() {
 
@@ -64,23 +124,35 @@ async function startCamera() {
   document.getElementById("status").textContent =
     "カメラを起動しています...";
 
-  scanner = new Html5Qrcode("reader");
+  scanner =
+    new Html5Qrcode("reader");
 
   try {
 
     await scanner.start(
+
       {
         facingMode: "environment"
       },
+
       {
+        /*
+         * カメラからの解析自体は10回/秒
+         */
         fps: 10,
+
         qrbox: {
           width: 280,
           height: 160
         }
       },
+
       onScanSuccess,
-      function () {}
+
+      function () {
+        // 読み取り失敗は無視
+      }
+
     );
 
     scanning = true;
@@ -88,57 +160,25 @@ async function startCamera() {
     document.getElementById("status").textContent =
       "バーコードをカメラに映してください";
 
-  } catch (error) {
+  }
+
+  catch (error) {
 
     document.getElementById("status").textContent =
       "カメラを起動できません: " + error;
+
   }
 }
 
+
+/*
+ * バーコード読み取り成功
+ */
 async function onScanSuccess(decodedText) {
 
   const now = Date.now();
 
-  if (
-    decodedText === lastCode &&
-    now - lastScanTime < 2000
-  ) {
-    return;
-  }
 
-  lastCode = decodedText;
-  lastScanTime = now;
-
-  document.getElementById("status").textContent =
-    "読み取り: " + decodedText;
-
-  try {
-
-    await fetch(
-      RELAY_URL,
-      {
-        method: "POST",
-        mode: "no-cors",
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-        },
-        body:
-          "value=" +
-          encodeURIComponent(decodedText)
-      }
-    );
-
-    document.getElementById("status").textContent =
-      "送信しました: " + decodedText;
-
-  } catch (error) {
-
-    document.getElementById("status").textContent =
-      "送信エラー: " + error;
-  }
-}
-</script>
-
-</body>
-</html>
+  /*
+   * 前回の読み取りから1秒経っていなければ無視
+   */
