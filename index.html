@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
 
 <title>バーコードスキャナー</title>
 
@@ -18,8 +23,10 @@ html,
 body {
   margin: 0;
   padding: 0;
+
   background: white;
   color: black;
+
   font-family: sans-serif;
   text-align: center;
 }
@@ -33,13 +40,15 @@ h1 {
   font-size: 18px;
   min-height: 30px;
   margin: 10px;
+
   word-break: break-all;
 }
 
-/*
- * カメラ表示領域
- */
+
+/* カメラ表示 */
+
 #camera {
+
   position: relative;
 
   width: 100%;
@@ -54,12 +63,11 @@ h1 {
   overflow: hidden;
 }
 
-/*
- * カメラ映像
- *
- * 枠の中だけに表示
- */
+
+/* カメラ映像 */
+
 #video {
+
   position: absolute;
 
   width: 82%;
@@ -73,10 +81,11 @@ h1 {
   background: #ddd;
 }
 
-/*
- * 固定枠
- */
+
+/* 固定枠 */
+
 #scanBox {
+
   position: absolute;
 
   width: 82%;
@@ -85,7 +94,8 @@ h1 {
   left: 50%;
   top: 115px;
 
-  transform: translate(-50%, -50%);
+  transform:
+    translate(-50%, -50%);
 
   border: 3px solid black;
 
@@ -94,32 +104,63 @@ h1 {
   z-index: 10;
 }
 
+
+/* ボタン */
+
 button {
+
   font-size: 20px;
-  padding: 12px 25px;
-  margin: 8px;
+
+  padding:
+    12px 20px;
+
+  margin: 6px;
+
 }
 
+
+/* 結果 */
+
 #result {
+
   font-size: 22px;
+
   margin: 15px;
+
   word-break: break-all;
+
 }
 
 </style>
+
 </head>
+
 
 <body>
 
-<h1>バーコードスキャナー</h1>
+
+<h1>
+バーコードスキャナー
+</h1>
+
 
 <div id="status">
 カメラ開始を押してください
 </div>
 
+
 <button id="startButton">
 カメラ開始
 </button>
+
+
+<button
+  id="switchButton"
+  disabled
+>
+カメラ切替
+</button>
+
 
 <div id="camera">
 
@@ -134,40 +175,93 @@ button {
 
 </div>
 
+
 <div id="result"></div>
+
 
 <script>
 
+
 /*
- * Google Apps ScriptのWebアプリURL
+ * Google Apps ScriptのURL
  */
 const RELAY_URL =
   "https://script.google.com/macros/s/AKfycbxum4qXhHTsy9jQ9PToEagsBpvR6s7FrO5ODDVoIRiWTZ1UuQptw7lMH2gvZAhqR0bB9A/exec";
 
 
+/*
+ * ZXing
+ */
 let reader = null;
+
 let controls = null;
+
+
+/*
+ * カメラ一覧
+ */
+let cameras = [];
+
+
+/*
+ * 現在のカメラ番号
+ */
+let currentCamera = 0;
+
+
+/*
+ * 起動状態
+ */
 let running = false;
 
+
+/*
+ * 音声
+ */
 let audioContext = null;
 
+
+/*
+ * 同じバーコード制限
+ */
 let lastCode = "";
+
 let lastCodeTime = 0;
 
 const SAME_CODE_INTERVAL = 2000;
 
 
+/*
+ * HTML
+ */
 const video =
-  document.getElementById("video");
+  document.getElementById(
+    "video"
+  );
+
 
 const status =
-  document.getElementById("status");
+  document.getElementById(
+    "status"
+  );
+
 
 const result =
-  document.getElementById("result");
+  document.getElementById(
+    "result"
+  );
+
 
 const startButton =
-  document.getElementById("startButton");
+  document.getElementById(
+    "startButton"
+  );
+
+
+const switchButton =
+  document.getElementById(
+    "switchButton"
+  );
 
 
 /*
@@ -175,22 +269,36 @@ const startButton =
  */
 startButton.addEventListener(
   "click",
-  startScanner
+  startCamera
 );
 
 
-async function startScanner() {
+/*
+ * カメラ切替
+ */
+switchButton.addEventListener(
+  "click",
+  switchCamera
+);
+
+
+/*
+ * カメラ開始
+ */
+async function startCamera() {
+
 
   if (running) {
     return;
   }
+
 
   status.textContent =
     "カメラを確認しています...";
 
 
   /*
-   * 音声を初期化
+   * 音声
    */
   try {
 
@@ -198,10 +306,12 @@ async function startScanner() {
       window.AudioContext ||
       window.webkitAudioContext;
 
+
     if (AudioContext) {
 
       audioContext =
         new AudioContext();
+
 
       if (
         audioContext.state ===
@@ -211,6 +321,7 @@ async function startScanner() {
         await audioContext.resume();
 
       }
+
     }
 
   } catch (error) {
@@ -221,59 +332,13 @@ async function startScanner() {
 
 
   /*
-   * HTTPS確認
+   * カメラ許可
    */
-  if (
-    location.protocol !== "https:" &&
-    location.hostname !== "localhost"
-  ) {
-
-    status.textContent =
-      "HTTPSで開いてください";
-
-    return;
-  }
-
-
-  /*
-   * カメラAPI確認
-   */
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
-  ) {
-
-    status.textContent =
-      "このブラウザではカメラを利用できません";
-
-    return;
-  }
-
-
-  /*
-   * ZXing確認
-   */
-  if (
-    typeof ZXingBrowser ===
-    "undefined"
-  ) {
-
-    status.textContent =
-      "バーコードライブラリを読み込めません";
-
-    return;
-  }
-
-
   try {
 
-    /*
-     * 最初にカメラ許可を取得
-     *
-     * ここではカメラを指定しない
-     */
-    const initialStream =
-      await navigator.mediaDevices
+    const stream =
+      await navigator
+        .mediaDevices
         .getUserMedia({
 
           video: true,
@@ -284,14 +349,15 @@ async function startScanner() {
 
 
     /*
-     * カメラ一覧を取得
+     * カメラ一覧取得
      */
     const devices =
-      await navigator.mediaDevices
+      await navigator
+        .mediaDevices
         .enumerateDevices();
 
 
-    const cameras =
+    cameras =
       devices.filter(
         function(device) {
 
@@ -299,6 +365,26 @@ async function startScanner() {
             device.kind ===
             "videoinput"
           );
+
+        }
+      );
+
+
+    /*
+     * 最初のカメラを選択
+     */
+    currentCamera = 0;
+
+
+    /*
+     * 確認用ストリーム停止
+     */
+    stream
+      .getTracks()
+      .forEach(
+        function(track) {
+
+          track.stop();
 
         }
       );
@@ -314,92 +400,6 @@ async function startScanner() {
 
 
     /*
-     * カメラ名を表示
-     */
-    console.log(
-      "検出カメラ:",
-      cameras
-    );
-
-
-    /*
-     * 背面カメラ候補
-     */
-    const backCamera =
-      cameras.find(
-        function(camera) {
-
-          const label =
-            (
-              camera.label ||
-              ""
-            ).toLowerCase();
-
-
-          return (
-
-            label.includes("back") ||
-            label.includes("rear") ||
-            label.includes("environment") ||
-            label.includes("背面") ||
-            label.includes("後")
-
-          );
-
-        }
-      );
-
-
-    /*
-     * 背面カメラが見つかったらそれを使用
-     *
-     * 見つからない場合は、
-     * 2台目以降を候補にする
-     */
-    let selectedCamera;
-
-
-    if (backCamera) {
-
-      selectedCamera =
-        backCamera;
-
-    } else if (
-      cameras.length > 1
-    ) {
-
-      selectedCamera =
-        cameras[
-          cameras.length - 1
-        ];
-
-    } else {
-
-      selectedCamera =
-        cameras[0];
-
-    }
-
-
-    /*
-     * 最初のストリームを停止
-     */
-    initialStream
-      .getTracks()
-      .forEach(
-        function(track) {
-
-          track.stop();
-
-        }
-      );
-
-
-    status.textContent =
-      "カメラを起動しています...";
-
-
-    /*
      * ZXing
      */
     reader =
@@ -409,57 +409,25 @@ async function startScanner() {
 
 
     /*
-     * 選択したカメラだけを使用
+     * カメラ起動
      */
-    controls =
-      await reader
-        .decodeFromVideoDevice(
-
-          selectedCamera.deviceId,
-
-          video,
-
-          function(
-            resultCode,
-            error
-          ) {
-
-            if (
-              resultCode
-            ) {
-
-              onBarcode(
-                resultCode.getText()
-              );
-
-            }
-
-          }
-
-        );
+    await startSelectedCamera();
 
 
-    running =
-      true;
+    running = true;
 
 
     startButton.disabled =
       true;
 
-    startButton.textContent =
-      "カメラ起動中";
 
-
-    status.textContent =
-      "背面カメラで読み取り中";
+    switchButton.disabled =
+      false;
 
 
   } catch (error) {
 
-    console.error(
-      "CAMERA ERROR",
-      error
-    );
+    console.error(error);
 
 
     status.textContent =
@@ -474,9 +442,136 @@ async function startScanner() {
 
 
 /*
+ * 選択中のカメラを起動
+ */
+async function startSelectedCamera() {
+
+
+  /*
+   * 以前のカメラを停止
+   */
+  if (controls) {
+
+    try {
+
+      controls.stop();
+
+    } catch (error) {
+
+      console.log(error);
+
+    }
+
+    controls = null;
+
+  }
+
+
+  const camera =
+    cameras[currentCamera];
+
+
+  if (!camera) {
+
+    return;
+
+  }
+
+
+  status.textContent =
+    "カメラを起動しています...";
+
+
+  /*
+   * カメラ名表示
+   */
+  status.textContent =
+    "使用カメラ: " +
+    (
+      camera.label ||
+      "カメラ " +
+      (currentCamera + 1)
+    );
+
+
+  /*
+   * 指定したカメラを起動
+   */
+  controls =
+    await reader
+      .decodeFromVideoDevice(
+
+        camera.deviceId,
+
+        video,
+
+        function(
+          resultCode,
+          error
+        ) {
+
+
+          if (resultCode) {
+
+            onBarcode(
+              resultCode.getText()
+            );
+
+          }
+
+        }
+
+      );
+
+
+}
+
+
+/*
+ * カメラ切替
+ */
+async function switchCamera() {
+
+
+  if (!cameras.length) {
+
+    return;
+
+  }
+
+
+  /*
+   * 次のカメラへ
+   */
+  currentCamera =
+    (
+      currentCamera + 1
+    ) %
+    cameras.length;
+
+
+  try {
+
+    await startSelectedCamera();
+
+  } catch (error) {
+
+    status.textContent =
+      "カメラ切替エラー: " +
+      error.name +
+      " / " +
+      error.message;
+
+  }
+
+}
+
+
+/*
  * バーコード読み取り
  */
 async function onBarcode(code) {
+
 
   const now =
     Date.now();
@@ -502,6 +597,7 @@ async function onBarcode(code) {
 
   lastCode =
     code;
+
 
   lastCodeTime =
     now;
@@ -551,7 +647,9 @@ async function onBarcode(code) {
 
         body:
           "value=" +
-          encodeURIComponent(code)
+          encodeURIComponent(
+            code
+          )
 
       }
 
@@ -579,11 +677,16 @@ async function onBarcode(code) {
  */
 function beep() {
 
+
   if (!audioContext) {
+
     return;
+
   }
 
+
   try {
+
 
     if (
       audioContext.state ===
@@ -596,32 +699,47 @@ function beep() {
 
 
     const oscillator =
-      audioContext.createOscillator();
+      audioContext
+        .createOscillator();
+
 
     const gain =
-      audioContext.createGain();
+      audioContext
+        .createGain();
 
 
     oscillator.type =
       "sine";
+
 
     oscillator.frequency.value =
       1200;
 
 
     gain.gain.setValueAtTime(
+
       0.25,
+
       audioContext.currentTime
+
     );
 
 
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      audioContext.currentTime + 0.12
+    gain.gain
+      .exponentialRampToValueAtTime(
+
+        0.001,
+
+        audioContext.currentTime +
+        0.12
+
+      );
+
+
+    oscillator.connect(
+      gain
     );
 
-
-    oscillator.connect(gain);
 
     gain.connect(
       audioContext.destination
@@ -630,17 +748,18 @@ function beep() {
 
     oscillator.start();
 
+
     oscillator.stop(
-      audioContext.currentTime + 0.12
+
+      audioContext.currentTime +
+      0.12
+
     );
 
 
   } catch (error) {
 
-    console.log(
-      "BEEP ERROR",
-      error
-    );
+    console.log(error);
 
   }
 
@@ -649,4 +768,5 @@ function beep() {
 </script>
 
 </body>
+
 </html>
