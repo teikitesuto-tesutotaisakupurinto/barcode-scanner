@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>バーコードスキャナー</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
+    }
+
+    #status {
+      font-size: 20px;
+      margin: 20px 0;
+      word-break: break-all;
+    }
+
+    button {
+      font-size: 20px;
+      padding: 12px 25px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>バーコードスキャナー</h1>
+
+<div id="status">「カメラ開始」を押してください</div>
+
+<button id="startButton">カメラ開始</button>
+
+<div id="reader"></div>
+
+<script>
+const RELAY_URL =
+  "ここにGoogle Apps ScriptのウェブアプリURLを入れる";
+
+let scanner = null;
+let scanning = false;
+let lastCode = "";
+let lastScanTime = 0;
+
+document
+  .getElementById("startButton")
+  .addEventListener("click", startCamera);
+
+async function startCamera() {
+
+  if (scanning) {
+    return;
+  }
+
+  document.getElementById("status").textContent =
+    "カメラを起動しています...";
+
+  scanner = new Html5Qrcode("reader");
+
+  try {
+
+    await scanner.start(
+      {
+        facingMode: "environment"
+      },
+      {
+        fps: 10,
+        qrbox: {
+          width: 280,
+          height: 160
+        }
+      },
+      onScanSuccess,
+      function () {}
+    );
+
+    scanning = true;
+
+    document.getElementById("status").textContent =
+      "バーコードをカメラに映してください";
+
+  } catch (error) {
+
+    document.getElementById("status").textContent =
+      "カメラを起動できません: " + error;
+  }
+}
+
+async function onScanSuccess(decodedText) {
+
+  const now = Date.now();
+
+  if (
+    decodedText === lastCode &&
+    now - lastScanTime < 2000
+  ) {
+    return;
+  }
+
+  lastCode = decodedText;
+  lastScanTime = now;
+
+  document.getElementById("status").textContent =
+    "読み取り: " + decodedText;
+
+  try {
+
+    await fetch(
+      RELAY_URL,
+      {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+        body:
+          "value=" +
+          encodeURIComponent(decodedText)
+      }
+    );
+
+    document.getElementById("status").textContent =
+      "送信しました: " + decodedText;
+
+  } catch (error) {
+
+    document.getElementById("status").textContent =
+      "送信エラー: " + error;
+  }
+}
+</script>
+
+</body>
+</html>
