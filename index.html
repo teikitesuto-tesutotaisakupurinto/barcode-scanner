@@ -9,7 +9,6 @@
 <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 
 <style>
-
 * {
   box-sizing: border-box;
 }
@@ -73,7 +72,6 @@ button {
   margin: 12px;
   word-break: break-all;
 }
-
 </style>
 </head>
 
@@ -107,9 +105,7 @@ button {
 <script>
 
 /*
- * Google Apps ScriptのWebアプリURL
- *
- * ここだけ自分のURLに変更
+ * Google Apps ScriptのURL
  */
 const RELAY_URL =
   "https://script.google.com/macros/s/AKfycbxum4qXhHTsy9jQ9PToEagsBpvR6s7FrO5ODDVoIRiWTZ1UuQptw7lMH2gvZAhqR0bB9A/exec";
@@ -119,25 +115,14 @@ let reader = null;
 let controls = null;
 let running = false;
 
-
-/*
- * 音声
- */
 let audioContext = null;
 
-
-/*
- * 同じバーコードの制限
- */
 let lastCode = "";
 let lastCodeTime = 0;
 
 const SAME_CODE_INTERVAL = 2000;
 
 
-/*
- * 画面
- */
 const video =
   document.getElementById("video");
 
@@ -151,9 +136,6 @@ const startButton =
   document.getElementById("startButton");
 
 
-/*
- * カメラ開始
- */
 startButton.addEventListener(
   "click",
   startScanner
@@ -166,9 +148,12 @@ async function startScanner() {
     return;
   }
 
+  status.textContent =
+    "カメラを起動しています...";
+
 
   /*
-   * 音声をユーザー操作の中で有効化
+   * 音声を有効化
    */
   try {
 
@@ -189,13 +174,14 @@ async function startScanner() {
         await audioContext.resume();
 
       }
-
     }
 
-  } catch (e) {
+  } catch (error) {
 
-    console.log(e);
-
+    console.log(
+      "音声初期化エラー",
+      error
+    );
   }
 
 
@@ -215,6 +201,21 @@ async function startScanner() {
 
 
   /*
+   * カメラAPI確認
+   */
+  if (
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ) {
+
+    status.textContent =
+      "このブラウザではカメラを利用できません";
+
+    return;
+  }
+
+
+  /*
    * ZXing確認
    */
   if (
@@ -223,29 +224,24 @@ async function startScanner() {
   ) {
 
     status.textContent =
-      "バーコードライブラリの読み込みに失敗しました";
+      "バーコードライブラリを読み込めません";
 
     return;
   }
 
 
-  status.textContent =
-    "カメラを起動しています...";
-
-
   try {
 
     /*
-     * カメラを明示的に要求
+     * ここでは facingMode を
+     * 一切指定しない
+     *
+     * これが今回の重要ポイント
      */
     const stream =
       await navigator.mediaDevices.getUserMedia({
 
-        video: {
-          facingMode: {
-            ideal: "environment"
-          }
-        },
+        video: true,
 
         audio: false
 
@@ -253,41 +249,42 @@ async function startScanner() {
 
 
     /*
-     * 一度取得したカメラを停止
-     * ZXing側で正式に取得し直す
+     * 実際に選ばれたカメラを確認
      */
-    stream
-      .getTracks()
-      .forEach(
-        track => track.stop()
-      );
+    const track =
+      stream.getVideoTracks()[0];
+
+    const settings =
+      track.getSettings();
+
+    console.log(
+      "使用カメラ:",
+      settings
+    );
 
 
     /*
-     * ZXing
+     * 一度停止
+     */
+    track.stop();
+
+
+    /*
+     * ZXing開始
      */
     reader =
       new ZXingBrowser.BrowserMultiFormatReader();
 
 
     /*
-     * 背面カメラを使って連続読み取り
+     * カメラを指定せず起動
      */
     controls =
       await reader.decodeFromConstraints(
 
         {
-          video: {
-            facingMode: {
-              ideal: "environment"
-            },
-            width: {
-              ideal: 1280
-            },
-            height: {
-              ideal: 720
-            }
-          }
+          video: true,
+          audio: false
         },
 
         video,
@@ -306,12 +303,10 @@ async function startScanner() {
           }
 
         }
-
       );
 
 
     running = true;
-
 
     startButton.disabled =
       true;
@@ -330,7 +325,6 @@ async function startScanner() {
       error
     );
 
-
     status.textContent =
       "カメラ起動エラー: " +
       error.name +
@@ -338,41 +332,31 @@ async function startScanner() {
       error.message;
 
   }
-
 }
 
 
 /*
- * バーコードを読み取った
+ * バーコード読み取り
  */
-async function onBarcode(
-  code
-) {
+async function onBarcode(code) {
 
   const now =
     Date.now();
 
 
   /*
-   * 同じコードだけ2秒間無視
+   * 同じバーコードは2秒以内無視
    */
   if (
-
     code === lastCode &&
-
     now - lastCodeTime <
       SAME_CODE_INTERVAL
-
   ) {
 
     return;
-
   }
 
 
-  /*
-   * 記録
-   */
   lastCode =
     code;
 
@@ -386,30 +370,22 @@ async function onBarcode(
   beep();
 
 
-  /*
-   * 表示
-   */
   result.textContent =
     code;
 
   status.textContent =
-    "読み取り: " +
-    code;
+    "読み取り: " + code;
 
 
   /*
-   * Google Apps Scriptへ送信
+   * Apps Scriptへ送信
    */
   try {
 
     await fetch(
-
       RELAY_URL,
-
       {
-
         method: "POST",
-
         mode: "no-cors",
 
         headers: {
@@ -420,31 +396,21 @@ async function onBarcode(
         body:
           "value=" +
           encodeURIComponent(code)
-
       }
-
     );
 
 
     status.textContent =
-      "送信しました: " +
-      code;
+      "送信しました: " + code;
 
 
   } catch (error) {
-
-    console.error(
-      "SEND ERROR",
-      error
-    );
-
 
     status.textContent =
       "送信エラー: " +
       error.message;
 
   }
-
 }
 
 
@@ -456,7 +422,6 @@ function beep() {
   if (!audioContext) {
     return;
   }
-
 
   try {
 
@@ -489,7 +454,6 @@ function beep() {
       audioContext.currentTime
     );
 
-
     gain.gain.exponentialRampToValueAtTime(
       0.001,
       audioContext.currentTime + 0.12
@@ -509,16 +473,13 @@ function beep() {
       audioContext.currentTime + 0.12
     );
 
-
   } catch (error) {
 
     console.log(
       "BEEP ERROR",
       error
     );
-
   }
-
 }
 
 </script>
