@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
 
 <meta charset="UTF-8">
@@ -36,19 +37,33 @@ h1 {
   margin: 15px 0;
 }
 
+#connectionArea {
+  margin: 15px auto;
+  max-width: 500px;
+}
+
+#code {
+  width: 100%;
+  padding: 12px;
+  font-size: 20px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+button {
+  font-size: 20px;
+  padding: 12px 20px;
+  margin: 6px;
+}
+
 #status {
   font-size: 18px;
   min-height: 30px;
   margin: 10px;
-
   word-break: break-all;
 }
 
-
-/* カメラ表示 */
-
 #camera {
-
   position: relative;
 
   width: 100%;
@@ -63,11 +78,7 @@ h1 {
   overflow: hidden;
 }
 
-
-/* カメラ映像 */
-
 #video {
-
   position: absolute;
 
   width: 82%;
@@ -81,11 +92,7 @@ h1 {
   background: #ddd;
 }
 
-
-/* 固定枠 */
-
 #scanBox {
-
   position: absolute;
 
   width: 82%;
@@ -104,31 +111,10 @@ h1 {
   z-index: 10;
 }
 
-
-/* ボタン */
-
-button {
-
-  font-size: 20px;
-
-  padding:
-    12px 20px;
-
-  margin: 6px;
-
-}
-
-
-/* 結果 */
-
 #result {
-
   font-size: 22px;
-
   margin: 15px;
-
   word-break: break-all;
-
 }
 
 </style>
@@ -144,12 +130,34 @@ button {
 </h1>
 
 
-<div id="status">
-カメラ開始を押してください
+<div id="connectionArea">
+
+  <input
+    id="code"
+    type="text"
+    maxlength="8"
+    placeholder="接続コード"
+    autocomplete="off"
+  >
+
+  <br>
+
+  <button id="connectButton">
+    接続
+  </button>
+
 </div>
 
 
-<button id="startButton">
+<div id="status">
+接続コードを入力してください
+</div>
+
+
+<button
+  id="startButton"
+  disabled
+>
 カメラ開始
 </button>
 
@@ -183,72 +191,49 @@ button {
 
 
 /*
- * Google Apps ScriptのURL
+ * Google Apps Script URL
  */
 const RELAY_URL =
-  "https://script.google.com/macros/s/AKfycbxum4qXhHTsy9jQ9PToEagsBpvR6s7FrO5ODDVoIRiWTZ1UuQptw7lMH2gvZAhqR0bB9A/exec";
+  "https://script.google.com/macros/s/AKfycbylaWMXqaZcO_tnsDMcg7YNhh9ZZKCR0hBr3iEYc3evlsMzZC2wFFBZgrG6_sCLhcIXAA/exec";
 
 
-/*
- * ZXing
- */
+let connectionCode = "";
+
 let reader = null;
 
 let controls = null;
 
-
-/*
- * カメラ一覧
- */
 let cameras = [];
 
-
-/*
- * 現在のカメラ番号
- */
 let currentCamera = 0;
 
-
-/*
- * 起動状態
- */
 let running = false;
 
-
-/*
- * 音声
- */
 let audioContext = null;
 
-
-/*
- * 同じバーコード制限
- */
 let lastCode = "";
 
 let lastCodeTime = 0;
 
+
+/*
+ * 同じバーコードは2秒以内無視
+ */
 const SAME_CODE_INTERVAL = 2000;
 
 
 /*
  * HTML
  */
-const video =
+const codeInput =
   document.getElementById(
-    "video"
+    "code"
   );
 
 
-const status =
+const connectButton =
   document.getElementById(
-    "status"
-  );
-
-
-const result =
-  document.getElementById(
-    "result"
+    "connectButton"
   );
 
 
@@ -262,6 +247,175 @@ const switchButton =
   document.getElementById(
     "switchButton"
   );
+
+
+const status =
+  document.getElementById(
+    "status"
+  );
+
+
+const video =
+  document.getElementById(
+    "video"
+  );
+
+
+const result =
+  document.getElementById(
+    "result"
+  );
+
+
+/*
+ * 接続ボタン
+ */
+connectButton.addEventListener(
+  "click",
+  connect
+);
+
+
+/*
+ * Enterでも接続
+ */
+codeInput.addEventListener(
+  "keydown",
+  function(event) {
+
+    if (
+      event.key ===
+      "Enter"
+    ) {
+
+      connect();
+
+    }
+
+  }
+);
+
+
+/*
+ * 接続
+ */
+async function connect() {
+
+  const code =
+    codeInput.value
+      .trim()
+      .toUpperCase();
+
+
+  if (!code) {
+
+    status.textContent =
+      "接続コードを入力してください";
+
+    return;
+
+  }
+
+
+  status.textContent =
+    "接続を確認しています...";
+
+
+  try {
+
+    const response =
+      await fetch(
+
+        RELAY_URL +
+        "?action=get&code=" +
+        encodeURIComponent(
+          code
+        ) +
+        "&_" +
+        Date.now(),
+
+        {
+          cache: "no-store"
+        }
+
+      );
+
+
+    const data =
+      await response.json();
+
+
+    /*
+     * 存在しないコードならエラー
+     */
+    if (
+      data.error
+    ) {
+
+      status.textContent =
+        "接続コードが正しくありません";
+
+      return;
+
+    }
+
+
+    /*
+     * 接続成功
+     */
+    connectionCode =
+      code;
+
+
+    /*
+     * 保存
+     */
+    localStorage.setItem(
+      "barcodeConnectionCode",
+      code
+    );
+
+
+    status.textContent =
+      "接続しました: " +
+      code;
+
+
+    startButton.disabled =
+      false;
+
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    status.textContent =
+      "接続エラー: " +
+      error.message;
+
+  }
+
+}
+
+
+/*
+ * 保存済みコードを復元
+ */
+const savedCode =
+  localStorage.getItem(
+    "barcodeConnectionCode"
+  );
+
+
+if (savedCode) {
+
+  codeInput.value =
+    savedCode;
+
+}
 
 
 /*
@@ -287,14 +441,21 @@ switchButton.addEventListener(
  */
 async function startCamera() {
 
+  if (!connectionCode) {
 
-  if (running) {
+    status.textContent =
+      "先に接続してください";
+
     return;
+
   }
 
 
-  status.textContent =
-    "カメラを確認しています...";
+  if (running) {
+
+    return;
+
+  }
 
 
   /*
@@ -326,16 +487,18 @@ async function startCamera() {
 
   } catch (error) {
 
-    console.log(error);
+    console.log(
+      error
+    );
 
   }
 
 
-  /*
-   * カメラ許可
-   */
   try {
 
+    /*
+     * カメラ許可
+     */
     const stream =
       await navigator
         .mediaDevices
@@ -349,7 +512,7 @@ async function startCamera() {
 
 
     /*
-     * カメラ一覧取得
+     * カメラ一覧
      */
     const devices =
       await navigator
@@ -370,15 +533,6 @@ async function startCamera() {
       );
 
 
-    /*
-     * 最初のカメラを選択
-     */
-    currentCamera = 0;
-
-
-    /*
-     * 確認用ストリーム停止
-     */
     stream
       .getTracks()
       .forEach(
@@ -390,7 +544,7 @@ async function startCamera() {
       );
 
 
-    if (cameras.length === 0) {
+    if (!cameras.length) {
 
       throw new Error(
         "カメラが見つかりません"
@@ -399,18 +553,15 @@ async function startCamera() {
     }
 
 
-    /*
-     * ZXing
-     */
+    currentCamera = 0;
+
+
     reader =
       new
       ZXingBrowser
         .BrowserMultiFormatReader();
 
 
-    /*
-     * カメラ起動
-     */
     await startSelectedCamera();
 
 
@@ -427,7 +578,9 @@ async function startCamera() {
 
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     status.textContent =
@@ -442,14 +595,11 @@ async function startCamera() {
 
 
 /*
- * 選択中のカメラを起動
+ * 選択したカメラを開始
  */
 async function startSelectedCamera() {
 
 
-  /*
-   * 以前のカメラを停止
-   */
   if (controls) {
 
     try {
@@ -468,7 +618,9 @@ async function startSelectedCamera() {
 
 
   const camera =
-    cameras[currentCamera];
+    cameras[
+      currentCamera
+    ];
 
 
   if (!camera) {
@@ -479,14 +631,7 @@ async function startSelectedCamera() {
 
 
   status.textContent =
-    "カメラを起動しています...";
-
-
-  /*
-   * カメラ名表示
-   */
-  status.textContent =
-    "使用カメラ: " +
+    "カメラ: " +
     (
       camera.label ||
       "カメラ " +
@@ -494,9 +639,6 @@ async function startSelectedCamera() {
     );
 
 
-  /*
-   * 指定したカメラを起動
-   */
   controls =
     await reader
       .decodeFromVideoDevice(
@@ -510,8 +652,9 @@ async function startSelectedCamera() {
           error
         ) {
 
-
-          if (resultCode) {
+          if (
+            resultCode
+          ) {
 
             onBarcode(
               resultCode.getText()
@@ -522,7 +665,6 @@ async function startSelectedCamera() {
         }
 
       );
-
 
 }
 
@@ -540,9 +682,6 @@ async function switchCamera() {
   }
 
 
-  /*
-   * 次のカメラへ
-   */
   currentCamera =
     (
       currentCamera + 1
@@ -558,8 +697,6 @@ async function switchCamera() {
 
     status.textContent =
       "カメラ切替エラー: " +
-      error.name +
-      " / " +
       error.message;
 
   }
@@ -570,20 +707,20 @@ async function switchCamera() {
 /*
  * バーコード読み取り
  */
-async function onBarcode(code) {
-
+async function onBarcode(
+  value
+) {
 
   const now =
     Date.now();
 
 
   /*
-   * 同じバーコードは
-   * 2秒以内なら無視
+   * 同じコードは2秒以内無視
    */
   if (
 
-    code === lastCode &&
+    value === lastCode &&
 
     now - lastCodeTime <
       SAME_CODE_INTERVAL
@@ -596,8 +733,7 @@ async function onBarcode(code) {
 
 
   lastCode =
-    code;
-
+    value;
 
   lastCodeTime =
     now;
@@ -609,20 +745,17 @@ async function onBarcode(code) {
   beep();
 
 
-  /*
-   * 表示
-   */
   result.textContent =
-    code;
+    value;
 
 
   status.textContent =
     "読み取り: " +
-    code;
+    value;
 
 
   /*
-   * Apps Scriptへ送信
+   * 接続コード付きで送信
    */
   try {
 
@@ -646,9 +779,15 @@ async function onBarcode(code) {
         },
 
         body:
-          "value=" +
+
+          "code=" +
           encodeURIComponent(
-            code
+            connectionCode
+          ) +
+
+          "&value=" +
+          encodeURIComponent(
+            value
           )
 
       }
@@ -658,7 +797,7 @@ async function onBarcode(code) {
 
     status.textContent =
       "送信しました: " +
-      code;
+      value;
 
 
   } catch (error) {
@@ -677,7 +816,6 @@ async function onBarcode(code) {
  */
 function beep() {
 
-
   if (!audioContext) {
 
     return;
@@ -686,7 +824,6 @@ function beep() {
 
 
   try {
-
 
     if (
       audioContext.state ===
@@ -759,7 +896,9 @@ function beep() {
 
   } catch (error) {
 
-    console.log(error);
+    console.log(
+      error
+    );
 
   }
 
