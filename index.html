@@ -16,6 +16,10 @@
       text-align: center;
     }
 
+    h1 {
+      font-size: 24px;
+    }
+
     #reader {
       width: 100%;
       max-width: 500px;
@@ -52,60 +56,42 @@
 <script>
 
 const RELAY_URL =
-  "ここにGoogle Apps ScriptのウェブアプリURLを入れる";
+  "https://script.google.com/macros/s/AKfycbxum4qXhHTsy9jQ9PToEagsBpvR6s7FrO5ODDVoIRiWTZ1UuQptw7lMH2gvZAhqR0bB9A/exec";
+
 
 let scanner = null;
+
 let scanning = false;
+
+
+/*
+ * 音声用
+ */
+let audioContext = null;
+
+
+/*
+ * 最後に読み取ったバーコード
+ */
+let lastCode = "";
+
 
 /*
  * 最後に読み取った時刻
  */
 let lastScanTime = 0;
 
+
 /*
- * 1秒間は次の読み取りを受け付けない
+ * 同じバーコードを再読み取りするまでの時間
+ *
+ * 2000 = 2秒
  */
-const SCAN_INTERVAL = 1000;
+const SAME_CODE_INTERVAL = 2000;
 
 
 /*
- * ピッ音
- */
-function beep() {
-
-  const AudioContext =
-    window.AudioContext ||
-    window.webkitAudioContext;
-
-  const audioContext =
-    new AudioContext();
-
-  const oscillator =
-    audioContext.createOscillator();
-
-  const gain =
-    audioContext.createGain();
-
-  oscillator.frequency.value = 1000;
-
-  gain.gain.value = 0.15;
-
-  oscillator.connect(gain);
-
-  gain.connect(
-    audioContext.destination
-  );
-
-  oscillator.start();
-
-  oscillator.stop(
-    audioContext.currentTime + 0.08
-  );
-}
-
-
-/*
- * カメラ開始
+ * カメラ開始ボタン
  */
 document
   .getElementById("startButton")
@@ -115,30 +101,64 @@ document
   );
 
 
+/*
+ * カメラ開始
+ */
 async function startCamera() {
 
   if (scanning) {
     return;
   }
 
-  document.getElementById("status").textContent =
+
+  /*
+   * 音声をユーザー操作で有効化
+   */
+  try {
+
+    audioContext =
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
+
+    if (
+      audioContext.state ===
+      "suspended"
+    ) {
+
+      await audioContext.resume();
+    }
+
+  } catch (error) {
+
+    console.log(
+      "音声を有効化できません:",
+      error
+    );
+  }
+
+
+  document.getElementById(
+    "status"
+  ).textContent =
     "カメラを起動しています...";
+
 
   scanner =
     new Html5Qrcode("reader");
+
 
   try {
 
     await scanner.start(
 
       {
-        facingMode: "environment"
+        facingMode:
+          "environment"
       },
 
       {
-        /*
-         * カメラからの解析自体は10回/秒
-         */
         fps: 10,
 
         qrbox: {
@@ -150,22 +170,92 @@ async function startCamera() {
       onScanSuccess,
 
       function () {
-        // 読み取り失敗は無視
+        /*
+         * 読み取り失敗は無視
+         */
       }
 
     );
 
+
     scanning = true;
 
-    document.getElementById("status").textContent =
+
+    document.getElementById(
+      "status"
+    ).textContent =
       "バーコードをカメラに映してください";
 
+
+  } catch (error) {
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "カメラを起動できません: " +
+      error;
+
+  }
+}
+
+
+/*
+ * 読み取り音
+ */
+function beep() {
+
+  if (!audioContext) {
+    return;
   }
 
-  catch (error) {
 
-    document.getElementById("status").textContent =
-      "カメラを起動できません: " + error;
+  try {
+
+    const oscillator =
+      audioContext.createOscillator();
+
+
+    const gain =
+      audioContext.createGain();
+
+
+    oscillator.frequency.value =
+      1000;
+
+
+    gain.gain.setValueAtTime(
+      0.2,
+      audioContext.currentTime
+    );
+
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      audioContext.currentTime + 0.1
+    );
+
+
+    oscillator.connect(gain);
+
+
+    gain.connect(
+      audioContext.destination
+    );
+
+
+    oscillator.start();
+
+
+    oscillator.stop(
+      audioContext.currentTime + 0.1
+    );
+
+  } catch (error) {
+
+    console.log(
+      "ビープ音エラー:",
+      error
+    );
 
   }
 }
@@ -174,11 +264,108 @@ async function startCamera() {
 /*
  * バーコード読み取り成功
  */
-async function onScanSuccess(decodedText) {
+async function onScanSuccess(
+  decodedText
+) {
 
-  const now = Date.now();
+  const now =
+    Date.now();
 
 
   /*
-   * 前回の読み取りから1秒経っていなければ無視
+   * 同じバーコードなら
+   * 2秒以内は無視
    */
+  if (
+
+    decodedText ===
+      lastCode &&
+
+    now - lastScanTime <
+      SAME_CODE_INTERVAL
+
+  ) {
+
+    return;
+  }
+
+
+  /*
+   * 今回のバーコードを記録
+   */
+  lastCode =
+    decodedText;
+
+
+  lastScanTime =
+    now;
+
+
+  /*
+   * ピッ
+   */
+  beep();
+
+
+  /*
+   * 読み取った数字を表示
+   */
+  document.getElementById(
+    "status"
+  ).textContent =
+    "読み取り: " +
+    decodedText;
+
+
+  /*
+   * Google Apps Scriptへ送信
+   */
+  try {
+
+    await fetch(
+
+      RELAY_URL,
+
+      {
+        method: "POST",
+
+        mode: "no-cors",
+
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+
+        body:
+          "value=" +
+          encodeURIComponent(
+            decodedText
+          )
+      }
+
+    );
+
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "送信しました: " +
+      decodedText;
+
+
+  } catch (error) {
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "送信エラー: " +
+      error;
+
+  }
+
+}
+
+</script>
+
+</body>
+</html>
