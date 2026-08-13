@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>バーコードスキャナー</title>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -20,21 +19,22 @@
       font-size: 24px;
     }
 
-    #reader {
-      width: 100%;
-      max-width: 500px;
-      margin: 20px auto;
-    }
-
     #status {
       font-size: 20px;
       margin: 20px 0;
       word-break: break-all;
     }
 
+    #reader {
+      width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
+    }
+
     button {
-      font-size: 20px;
-      padding: 12px 25px;
+      font-size: 22px;
+      padding: 15px 30px;
+      margin: 10px;
     }
   </style>
 </head>
@@ -44,7 +44,7 @@
 <h1>バーコードスキャナー</h1>
 
 <div id="status">
-  「カメラ開始」を押してください
+  カメラ開始を押してください
 </div>
 
 <button id="startButton">
@@ -65,7 +65,7 @@ let scanning = false;
 
 
 /*
- * 音声用
+ * 音声
  */
 let audioContext = null;
 
@@ -83,15 +83,13 @@ let lastScanTime = 0;
 
 
 /*
- * 同じバーコードを再読み取りするまでの時間
- *
- * 2000 = 2秒
+ * 同じバーコードは2秒間読み取らない
  */
 const SAME_CODE_INTERVAL = 2000;
 
 
 /*
- * カメラ開始ボタン
+ * カメラ開始
  */
 document
   .getElementById("startButton")
@@ -101,9 +99,6 @@ document
   );
 
 
-/*
- * カメラ開始
- */
 async function startCamera() {
 
   if (scanning) {
@@ -112,33 +107,43 @@ async function startCamera() {
 
 
   /*
-   * 音声をユーザー操作で有効化
+   * 音声を有効にする
    */
   try {
 
-    audioContext =
-      new (
-        window.AudioContext ||
-        window.webkitAudioContext
-      )();
+    const AudioContext =
+      window.AudioContext ||
+      window.webkitAudioContext;
 
-    if (
-      audioContext.state ===
-      "suspended"
-    ) {
+    if (AudioContext) {
 
-      await audioContext.resume();
+      audioContext =
+        new AudioContext();
+
+      if (
+        audioContext.state ===
+        "suspended"
+      ) {
+
+        await audioContext.resume();
+
+      }
+
     }
 
   } catch (error) {
 
     console.log(
-      "音声を有効化できません:",
+      "音声初期化エラー:",
       error
     );
+
   }
 
 
+  /*
+   * カメラを起動
+   */
   document.getElementById(
     "status"
   ).textContent =
@@ -154,8 +159,9 @@ async function startCamera() {
     await scanner.start(
 
       {
-        facingMode:
-          "environment"
+        facingMode: {
+          ideal: "environment"
+        }
       },
 
       {
@@ -164,7 +170,9 @@ async function startCamera() {
         qrbox: {
           width: 280,
           height: 160
-        }
+        },
+
+        aspectRatio: 1.777778
       },
 
       onScanSuccess,
@@ -187,20 +195,38 @@ async function startCamera() {
       "バーコードをカメラに映してください";
 
 
+    document.getElementById(
+      "startButton"
+    ).textContent =
+      "カメラ起動中";
+
+
+    document.getElementById(
+      "startButton"
+    ).disabled = true;
+
+
   } catch (error) {
 
     document.getElementById(
       "status"
     ).textContent =
-      "カメラを起動できません: " +
+      "カメラ起動エラー: " +
       error;
 
+
+    console.error(
+      "カメラエラー:",
+      error
+    );
+
   }
+
 }
 
 
 /*
- * 読み取り音
+ * ピッ音
  */
 function beep() {
 
@@ -211,6 +237,16 @@ function beep() {
 
   try {
 
+    if (
+      audioContext.state ===
+      "suspended"
+    ) {
+
+      audioContext.resume();
+
+    }
+
+
     const oscillator =
       audioContext.createOscillator();
 
@@ -219,19 +255,23 @@ function beep() {
       audioContext.createGain();
 
 
+    oscillator.type =
+      "sine";
+
+
     oscillator.frequency.value =
-      1000;
+      1200;
 
 
     gain.gain.setValueAtTime(
-      0.2,
+      0.25,
       audioContext.currentTime
     );
 
 
     gain.gain.exponentialRampToValueAtTime(
       0.001,
-      audioContext.currentTime + 0.1
+      audioContext.currentTime + 0.12
     );
 
 
@@ -247,17 +287,19 @@ function beep() {
 
 
     oscillator.stop(
-      audioContext.currentTime + 0.1
+      audioContext.currentTime + 0.12
     );
+
 
   } catch (error) {
 
     console.log(
-      "ビープ音エラー:",
+      "音声エラー:",
       error
     );
 
   }
+
 }
 
 
@@ -274,12 +316,11 @@ async function onScanSuccess(
 
   /*
    * 同じバーコードなら
-   * 2秒以内は無視
+   * 2秒以内は完全に無視
    */
   if (
 
-    decodedText ===
-      lastCode &&
+    decodedText === lastCode &&
 
     now - lastScanTime <
       SAME_CODE_INTERVAL
@@ -287,6 +328,7 @@ async function onScanSuccess(
   ) {
 
     return;
+
   }
 
 
@@ -308,7 +350,7 @@ async function onScanSuccess(
 
 
   /*
-   * 読み取った数字を表示
+   * 読み取った値を表示
    */
   document.getElementById(
     "status"
@@ -327,13 +369,16 @@ async function onScanSuccess(
       RELAY_URL,
 
       {
+
         method: "POST",
 
         mode: "no-cors",
 
         headers: {
+
           "Content-Type":
             "application/x-www-form-urlencoded"
+
         },
 
         body:
@@ -341,6 +386,7 @@ async function onScanSuccess(
           encodeURIComponent(
             decodedText
           )
+
       }
 
     );
@@ -360,6 +406,12 @@ async function onScanSuccess(
     ).textContent =
       "送信エラー: " +
       error;
+
+
+    console.error(
+      "送信エラー:",
+      error
+    );
 
   }
 
